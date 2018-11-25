@@ -45,6 +45,7 @@ import org.osgi.service.component.annotations.Component;
  */
 @Component(name = "AlignmentManipulatorComponent", factory = "PepperManipulatorComponentFactory")
 public class AlignmentManipulator extends PepperManipulatorImpl {
+	public static final String ALIGNMENT_NAME = "align";
 	private Set<Pair<SDocument, SDocument>> documentPairs;
 	// =================================================== mandatory
 	// ===================================================
