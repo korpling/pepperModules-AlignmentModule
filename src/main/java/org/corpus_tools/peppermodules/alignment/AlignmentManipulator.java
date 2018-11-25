@@ -1,9 +1,13 @@
 package org.corpus_tools.peppermodules.alignment;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.corpus_tools.pepper.common.DOCUMENT_STATUS;
 import org.corpus_tools.pepper.common.PepperConfiguration;
 import org.corpus_tools.pepper.impl.PepperManipulatorImpl;
@@ -14,6 +18,7 @@ import org.corpus_tools.pepper.modules.PepperModule;
 import org.corpus_tools.pepper.modules.PepperModuleProperties;
 import org.corpus_tools.pepper.modules.exceptions.PepperModuleNotReadyException;
 import org.corpus_tools.salt.common.SCorpus;
+import org.corpus_tools.salt.common.SCorpusGraph;
 import org.corpus_tools.salt.common.SDocument;
 import org.corpus_tools.salt.common.STextualDS;
 import org.corpus_tools.salt.core.GraphTraverseHandler;
@@ -40,6 +45,7 @@ import org.osgi.service.component.annotations.Component;
  */
 @Component(name = "AlignmentManipulatorComponent", factory = "PepperManipulatorComponentFactory")
 public class AlignmentManipulator extends PepperManipulatorImpl {
+	private Set<Pair<SDocument, SDocument>> documentPairs;
 	// =================================================== mandatory
 	// ===================================================
 	/**
@@ -51,6 +57,7 @@ public class AlignmentManipulator extends PepperManipulatorImpl {
 	 */
 	public AlignmentManipulator() {
 		super();
+		documentPairs = new HashSet<>(); 
 		setName("AlignmentManipulator");
 		// TODO change suppliers e-mail address
 		setSupplierContact(URI.createURI(PepperConfiguration.EMAIL));
@@ -58,6 +65,53 @@ public class AlignmentManipulator extends PepperManipulatorImpl {
 		setSupplierHomepage(URI.createURI(PepperConfiguration.HOMEPAGE));
 		// TODO add a description of what your module is supposed to do
 		setDesc("The manipulator, traverses over the document-structure and prints out some information about it, like the frequencies of annotations, the number of nodes and edges and so on. ");
+	}
+	
+	@Override
+	public void start() {
+		if (getSaltProject() == null || getSaltProject().getCorpusGraphs().isEmpty()) {
+			// instead of handling the exception just pass on to super implementation, that takes care of the exception or provides an alternative plan  FIXME?
+			super.start();
+		}
+		SCorpusGraph corpusGraph = getSaltProject().getCorpusGraphs().get(0);
+		List<SDocument> documentNames = corpusGraph.getDocuments();
+		Set<String> used = new HashSet<>();
+		for (SDocument doc : documentNames) {
+			String name = doc.getName();
+			if (!used.contains(name)) {
+				for (SDocument other_doc : documentNames) {
+					String other_name = other_doc.getName();
+					if (!other_name.equals(name) && !used.contains(other_name) && (other_name.startsWith(name)) || name.startsWith(other_name)) {
+						used.add(name);
+						used.add(other_name);
+						documentPairs.add(Pair.of(doc, other_doc));
+					}
+				}
+			}
+		}
+		if (used.size() != documentNames.size()) {
+			// throw exception
+		}
+		mergeDocuments();
+		super.start();
+	}
+	
+	private void mergeDocuments() {
+		if (documentPairs.isEmpty()) {
+			return;
+		}
+		SCorpusGraph corpusGraph = getSaltProject().getCorpusGraphs().get(0);
+		List<SDocument> removeDocuments = new ArrayList<>();
+		for (Pair<SDocument, SDocument> pair : documentPairs) {
+			SDocument targetDocument = pair.getLeft();
+			SDocument sourceDocument = pair.getRight();
+			removeDocuments.add(sourceDocument);
+			sourceDocument.getDocumentGraph().getLabels().stream().forEach(targetDocument.getDocumentGraph()::addLabel);
+			sourceDocument.getDocumentGraph().getNodes().stream().forEach(targetDocument.getDocumentGraph()::addNode);
+			sourceDocument.getDocumentGraph().getRelations().stream().forEach(targetDocument.getDocumentGraph()::addRelation);
+			// FIXME this probably kills all timeline relations
+		}
+		removeDocuments.stream().forEach(corpusGraph::removeNode);
 	}
 
 	/**
@@ -96,14 +150,13 @@ public class AlignmentManipulator extends PepperManipulatorImpl {
 	 * starting point to explain how access the several objects in Salt model.
 	 */
 	public static class AlignmentMapper extends PepperMapperImpl implements GraphTraverseHandler {
+		
 		/**
 		 * Creates meta annotations, if not already exists
 		 */
 		@Override
 		public DOCUMENT_STATUS mapSCorpus() {
-			if (getCorpus().getMetaAnnotation("date") == null) {
-				getCorpus().createMetaAnnotation(null, "date", "1989-12-17");
-			}
+			
 			return (DOCUMENT_STATUS.COMPLETED);
 		}
 
@@ -112,52 +165,7 @@ public class AlignmentManipulator extends PepperManipulatorImpl {
 		 */
 		@Override
 		public DOCUMENT_STATUS mapSDocument() {
-			// create a StringBuilder, to be filled with informations (we need
-			// to intermediately store the results, because of parallelism of
-			// modules)
-			String format = "|%-15s: %15s |%n";
-			StringBuilder out = new StringBuilder();
-			out.append("\n");
-			// print out the id of the document
-			out.append(getDocument().getId());
-			out.append("\n");
-			out.append("+---------------------------------+\n");
-			// print out the general number of nodes
-			out.append(String.format(format, "nodes", getDocument().getDocumentGraph().getNodes().size()));
-			addProgress((double) (1 / 7));
-			// print out the general number of relations
-			out.append(String.format(format, "relations", getDocument().getDocumentGraph().getRelations().size()));
-			addProgress((double) (1 / 7));
-			// print out the general number of primary texts
-			out.append(String.format(format, "texts", getDocument().getDocumentGraph().getTextualDSs().size()));
-			addProgress((double) (1 / 7));
-			// print out the general number of tokens
-			out.append(String.format(format, "tokens", getDocument().getDocumentGraph().getTokens().size()));
-			addProgress((double) (1 / 7));
-			// print out the general number of spans
-			out.append(String.format(format, "spans", getDocument().getDocumentGraph().getSpans().size()));
-			addProgress((double) (1 / 7));
-			// print out the general number of structures
-			out.append(String.format(format, "structures", getDocument().getDocumentGraph().getStructures().size()));
-			addProgress((double) (1 / 7));
-
-			// create alist of all root nodes of the current document-structure
-			List<SNode> roots = getDocument().getDocumentGraph().getRoots();
-			// traverse the document-structure beginning at the roots in
-			// depth-first order top down. The id 'AlignmentTraversal' is used for
-			// uniqueness, in case of one class uses multiple traversals. This
-			// object then takes the call-backs implemented with methods
-			// checkConstraint, nodeReached and nodeLeft
-			getDocument().getDocumentGraph().traverse(roots, GRAPH_TRAVERSE_TYPE.TOP_DOWN_DEPTH_FIRST, "AlignmentTraversal", this);
-
-			// print out computed frequencies
-			for (Map.Entry<String, Integer> entry : frequencies.entrySet()) {
-				out.append(String.format(format, entry.getKey(), entry.getValue()));
-			}
-			addProgress((double) (1 / 7));
-			out.append("+---------------------------------+\n");
-			System.out.println(out.toString());
-
+			System.out.println("" + getDocument().getName());
 			return (DOCUMENT_STATUS.COMPLETED);
 		}
 
