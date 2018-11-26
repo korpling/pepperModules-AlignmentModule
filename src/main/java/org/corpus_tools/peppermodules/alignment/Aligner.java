@@ -17,16 +17,23 @@ import org.corpus_tools.pepper.modules.PepperMapper;
 import org.corpus_tools.pepper.modules.PepperModule;
 import org.corpus_tools.pepper.modules.PepperModuleProperties;
 import org.corpus_tools.pepper.modules.exceptions.PepperModuleNotReadyException;
+import org.corpus_tools.salt.SALT_TYPE;
+import org.corpus_tools.salt.SaltFactory;
 import org.corpus_tools.salt.common.SCorpus;
 import org.corpus_tools.salt.common.SCorpusGraph;
 import org.corpus_tools.salt.common.SDocument;
+import org.corpus_tools.salt.common.SDocumentGraph;
+import org.corpus_tools.salt.common.SSpan;
 import org.corpus_tools.salt.common.STextualDS;
+import org.corpus_tools.salt.common.SToken;
 import org.corpus_tools.salt.core.GraphTraverseHandler;
 import org.corpus_tools.salt.core.SAnnotation;
 import org.corpus_tools.salt.core.SGraph.GRAPH_TRAVERSE_TYPE;
+import org.corpus_tools.salt.core.SLayer;
 import org.corpus_tools.salt.core.SNode;
 import org.corpus_tools.salt.core.SRelation;
 import org.corpus_tools.salt.graph.Identifier;
+import org.corpus_tools.salt.graph.Label;
 import org.eclipse.emf.common.util.URI;
 import org.osgi.service.component.annotations.Component;
 
@@ -44,9 +51,9 @@ import org.osgi.service.component.annotations.Component;
  * @author Martin Klotz
  */
 @Component(name = "AlignmentManipulatorComponent", factory = "PepperManipulatorComponentFactory")
-public class AlignmentManipulator extends PepperManipulatorImpl {
+public class Aligner extends PepperManipulatorImpl {
 	public static final String ALIGNMENT_NAME = "align";
-	private Set<Pair<SDocument, SDocument>> documentPairs;
+	private static final String LAYER_NAME_NEW = "NEW";
 	// =================================================== mandatory
 	// ===================================================
 	/**
@@ -56,9 +63,8 @@ public class AlignmentManipulator extends PepperManipulatorImpl {
 	 * supported formats) are a kind of a fingerprint, which should make your
 	 * module unique.
 	 */
-	public AlignmentManipulator() {
+	public Aligner() {
 		super();
-		documentPairs = new HashSet<>(); 
 		setName("AlignmentManipulator");
 		// TODO change suppliers e-mail address
 		setSupplierContact(URI.createURI(PepperConfiguration.EMAIL));
@@ -73,16 +79,25 @@ public class AlignmentManipulator extends PepperManipulatorImpl {
 		if (getSaltProject() == null || getSaltProject().getCorpusGraphs().isEmpty()) {
 			// instead of handling the exception just pass on to super implementation, that takes care of the exception or provides an alternative plan  FIXME?
 			super.start();
-		}
+		}		
+		mergeDocuments();
+		super.start();
+	}
+	
+	/**
+	 * FIXME this method is public since testing this is impossible without a document controller being set in advance ... look into this
+	 */
+	public void mergeDocuments() {
 		SCorpusGraph corpusGraph = getSaltProject().getCorpusGraphs().get(0);
 		List<SDocument> documentNames = corpusGraph.getDocuments();
 		Set<String> used = new HashSet<>();
+		Set<Pair<SDocument, SDocument>> documentPairs = new HashSet<>(); 
 		for (SDocument doc : documentNames) {
 			String name = doc.getName();
 			if (!used.contains(name)) {
 				for (SDocument other_doc : documentNames) {
 					String other_name = other_doc.getName();
-					if (!other_name.equals(name) && !used.contains(other_name) && (other_name.startsWith(name)) || name.startsWith(other_name)) {
+					if (!other_name.equals(name) && !used.contains(other_name) && ((other_name.startsWith(name)) || name.startsWith(other_name))) {
 						used.add(name);
 						used.add(other_name);
 						documentPairs.add(Pair.of(doc, other_doc));
@@ -93,24 +108,29 @@ public class AlignmentManipulator extends PepperManipulatorImpl {
 		if (used.size() != documentNames.size()) {
 			// throw exception
 		}
-		mergeDocuments();
-		super.start();
-	}
-	
-	private void mergeDocuments() {
 		if (documentPairs.isEmpty()) {
 			return;
 		}
-		SCorpusGraph corpusGraph = getSaltProject().getCorpusGraphs().get(0);
 		List<SDocument> removeDocuments = new ArrayList<>();
 		for (Pair<SDocument, SDocument> pair : documentPairs) {
 			SDocument targetDocument = pair.getLeft();
 			SDocument sourceDocument = pair.getRight();
 			removeDocuments.add(sourceDocument);
-			sourceDocument.getDocumentGraph().getLabels().stream().forEach(targetDocument.getDocumentGraph()::addLabel);
-			sourceDocument.getDocumentGraph().getNodes().stream().forEach(targetDocument.getDocumentGraph()::addNode);
-			sourceDocument.getDocumentGraph().getRelations().stream().forEach(targetDocument.getDocumentGraph()::addRelation);
-			// FIXME this probably kills all timeline relations
+			SDocumentGraph targetGraph = targetDocument.getDocumentGraph();
+			SLayer layerNew = SaltFactory.createSLayer();
+			layerNew.setName(LAYER_NAME_NEW);
+			layerNew.setGraph(targetGraph);
+			SDocumentGraph sourceGraph = sourceDocument.getDocumentGraph();
+			List<SNode> nodes = new ArrayList<>();
+			sourceGraph.getNodes().stream().forEach(nodes::add);
+			List<SRelation<SNode, SNode>> relations = new ArrayList<>();
+			sourceGraph.getRelations().stream().forEach(relations::add);
+			List<Label> labels = new ArrayList<>();
+			sourceGraph.getAnnotations().stream().forEach(labels::add);
+			nodes.stream().forEach(targetGraph::addNode);
+			nodes.stream().forEach(layerNew::addNode);
+			relations.stream().forEach(targetGraph::addRelation);
+			labels.stream().forEach(targetGraph::addLabel);			
 		}
 		removeDocuments.stream().forEach(corpusGraph::removeNode);
 	}
@@ -134,6 +154,7 @@ public class AlignmentManipulator extends PepperManipulatorImpl {
 	 */
 	public PepperMapper createPepperMapper(Identifier Identifier) {
 		AlignmentMapper mapper = new AlignmentMapper();
+		mapper.setDocument( getSaltProject().getCorpusGraphs().get(0).getDocument(Identifier) );
 		return (mapper);
 	}
 
@@ -150,80 +171,43 @@ public class AlignmentManipulator extends PepperManipulatorImpl {
 	 * corpus to system.out. This is not very useful, but might be a good
 	 * starting point to explain how access the several objects in Salt model.
 	 */
-	public static class AlignmentMapper extends PepperMapperImpl implements GraphTraverseHandler {
+	public class AlignmentMapper extends PepperMapperImpl {
 		
-		/**
-		 * Creates meta annotations, if not already exists
-		 */
-		@Override
-		public DOCUMENT_STATUS mapSCorpus() {
-			
-			return (DOCUMENT_STATUS.COMPLETED);
-		}
-
 		/**
 		 * prints out some information about document-structure
 		 */
 		@Override
 		public DOCUMENT_STATUS mapSDocument() {
-			System.out.println("" + getDocument().getName());
-			return (DOCUMENT_STATUS.COMPLETED);
-		}
-
-		/** A map storing frequencies of annotations of processed documents. */
-		private Map<String, Integer> frequencies = new Hashtable<String, Integer>();
-
-		/**
-		 * This method is called for each node in document-structure, as long as
-		 * {@link #checkConstraint(GRAPH_TRAVERSE_TYPE, String, SRelation, SNode, long)}
-		 * returns true for this node. <br/>
-		 * In our dummy implementation it just collects frequencies of
-		 * annotations.
-		 */
-		@Override
-		public void nodeReached(GRAPH_TRAVERSE_TYPE traversalType, String traversalId, SNode currNode, SRelation sRelation, SNode fromNode, long order) {
-			if (currNode.getAnnotations().size() != 0) {
-				// step through all annotations to collect them in frequencies
-				// table
-				for (SAnnotation annotation : currNode.getAnnotations()) {
-					Integer frequence = frequencies.get(annotation.getName());
-					// if annotation hasn't been seen yet, create entry in
-					// frequencies set frequency to 0
-					if (frequence == null) {
-						frequence = 0;
+			SDocumentGraph graph = getDocument().getDocumentGraph();
+			AlignerProperties properties = (AlignerProperties) Aligner.this.getProperties();
+			int[][][] alignment = properties.getAlignmentData();
+			String sentenceName = properties.getSentenceName();
+			int sOffset = properties.getSmallestSentenceValue();
+			List<SSpan> spans = graph.getSpans();
+			SSpan[][] spanPairs = new SSpan[alignment.length][2];
+			STextualDS[] dataSources = {graph.getTextualDSs().get(0), graph.getTextualDSs().get(1)};
+			SLayer probe = graph.getLayerByName(LAYER_NAME_NEW).get(0);
+			for (SSpan span : spans) {
+				SAnnotation sentenceAnno = span.getAnnotation(sentenceName); 
+				if (sentenceAnno != null) {
+					int sentenceIx = Integer.parseInt( sentenceAnno.getValue_STEXT() ) - sOffset;
+					int writeIx = 0;
+					if (span.getLayers().contains(probe)) {
+						writeIx++;
 					}
-					frequence++;
-					frequencies.put(annotation.getName(), frequence);
+					spanPairs[sentenceIx][writeIx] = span;
 				}
 			}
-		}
-
-		/**
-		 * This method is called on the way back, in depth first mode it is
-		 * called for a node after all the nodes belonging to its subtree have
-		 * been visited. <br/>
-		 * In our dummy implementation, this method is not used.
-		 */
-		@Override
-		public void nodeLeft(GRAPH_TRAVERSE_TYPE traversalType, String traversalId, SNode currNode, SRelation edge, SNode fromNode, long order) {
-		}
-
-		/**
-		 * With this method you can decide if a node is supposed to be visited
-		 * by methods
-		 * {@link #nodeReached(GRAPH_TRAVERSE_TYPE, String, SNode, SRelation, SNode, long)}
-		 * and
-		 * {@link #nodeLeft(GRAPH_TRAVERSE_TYPE, String, SNode, SRelation, SNode, long)}
-		 * . In our dummy implementation for instance we do not need to visit
-		 * the nodes {@link STextualDS}.
-		 */
-		@Override
-		public boolean checkConstraint(GRAPH_TRAVERSE_TYPE traversalType, String traversalId, SRelation edge, SNode currNode, long order) {
-			if (currNode instanceof STextualDS) {
-				return (false);
-			} else {
-				return (true);
+			for (int i=0; i < alignment.length; i++) {
+				List<SToken> sourceTokens = graph.getSortedTokenByText( graph.getOverlappedTokens(spanPairs[i][0]) );
+				List<SToken> targetTokens = graph.getSortedTokenByText( graph.getOverlappedTokens(spanPairs[i][1]) );
+				for (int[] alignPair : alignment[i]) {
+					graph.createRelation(sourceTokens.get(alignPair[0]), targetTokens.get(alignPair[1]), SALT_TYPE.SPOINTING_RELATION, null).setType(ALIGNMENT_NAME);
+				}
 			}
+			graph.getNodes().stream().forEach((SNode n) -> n.removeLayer(probe));
+			graph.removeLayer(probe);
+			return (DOCUMENT_STATUS.COMPLETED);
 		}
 	}
 
