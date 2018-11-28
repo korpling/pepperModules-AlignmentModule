@@ -1,8 +1,15 @@
 package org.corpus_tools.peppermodules.alignment;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Hashtable;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,6 +23,7 @@ import org.corpus_tools.pepper.modules.PepperManipulator;
 import org.corpus_tools.pepper.modules.PepperMapper;
 import org.corpus_tools.pepper.modules.PepperModule;
 import org.corpus_tools.pepper.modules.PepperModuleProperties;
+import org.corpus_tools.pepper.modules.exceptions.PepperModuleException;
 import org.corpus_tools.pepper.modules.exceptions.PepperModuleNotReadyException;
 import org.corpus_tools.salt.SALT_TYPE;
 import org.corpus_tools.salt.SaltFactory;
@@ -26,9 +34,7 @@ import org.corpus_tools.salt.common.SDocumentGraph;
 import org.corpus_tools.salt.common.SSpan;
 import org.corpus_tools.salt.common.STextualDS;
 import org.corpus_tools.salt.common.SToken;
-import org.corpus_tools.salt.core.GraphTraverseHandler;
 import org.corpus_tools.salt.core.SAnnotation;
-import org.corpus_tools.salt.core.SGraph.GRAPH_TRAVERSE_TYPE;
 import org.corpus_tools.salt.core.SLayer;
 import org.corpus_tools.salt.core.SNode;
 import org.corpus_tools.salt.core.SRelation;
@@ -53,7 +59,10 @@ import org.osgi.service.component.annotations.Component;
 @Component(name = "AlignmentManipulatorComponent", factory = "PepperManipulatorComponentFactory")
 public class Aligner extends PepperManipulatorImpl {
 	public static final String ALIGNMENT_NAME = "align";
+	public static final String ALIGNMENT_FILE_ENDING = "align";
 	private static final String LAYER_NAME_NEW = "NEW";
+	
+	private Map<String, int[][][]> alignmentMap = null;
 	// =================================================== mandatory
 	// ===================================================
 	/**
@@ -71,7 +80,7 @@ public class Aligner extends PepperManipulatorImpl {
 		// TODO change suppliers homepage
 		setSupplierHomepage(URI.createURI(PepperConfiguration.HOMEPAGE));
 		// TODO add a description of what your module is supposed to do
-		setDesc("The manipulator, traverses over the document-structure and prints out some information about it, like the frequencies of annotations, the number of nodes and edges and so on. ");
+		setDesc("");
 	}
 	
 	@Override
@@ -88,25 +97,38 @@ public class Aligner extends PepperManipulatorImpl {
 	 * FIXME this method is public since testing this is impossible without a document controller being set in advance ... look into this
 	 */
 	public void mergeDocuments() {
+		this.alignmentMap = new HashMap<>();
+		try {
+			String path = ((AlignerProperties) getProperties()).getAlignmentDir();
+			int i = 0;
+			for (Path filePath : Files.newDirectoryStream( Paths.get(path) )) {
+				String fileString = filePath.toString();
+				ObjectInputStream in = new ObjectInputStream( new FileInputStream( fileString ));
+				String fileName = filePath.getFileName().toString();
+				alignmentMap.put(fileName.substring(0, fileName.lastIndexOf('.')), (int[][][]) in.readObject());
+			}
+		} catch (IOException | ClassNotFoundException e) {
+			throw new PepperModuleException("An error occured reading the alignment files.");
+		}
 		SCorpusGraph corpusGraph = getSaltProject().getCorpusGraphs().get(0);
-		List<SDocument> documentNames = corpusGraph.getDocuments();
-		Set<String> used = new HashSet<>();
-		Set<Pair<SDocument, SDocument>> documentPairs = new HashSet<>(); 
-		for (SDocument doc : documentNames) {
-			String name = doc.getName();
-			if (!used.contains(name)) {
-				for (SDocument other_doc : documentNames) {
-					String other_name = other_doc.getName();
-					if (!other_name.equals(name) && !used.contains(other_name) && ((other_name.startsWith(name)) || name.startsWith(other_name))) {
-						used.add(name);
-						used.add(other_name);
-						documentPairs.add(Pair.of(doc, other_doc));
-					}
+		Set<Pair<SDocument, SDocument>> documentPairs = new HashSet<>();
+		for (String documentName : alignmentMap.keySet()) {
+			SDocument original = null;
+			SDocument translation = null;
+			for (Iterator<SDocument> docs = corpusGraph.getDocuments().iterator(); (original==null || translation==null) && docs.hasNext(); ) {
+				SDocument currentDoc = docs.next();
+				String currentName = currentDoc.getName();
+				if (currentName.equals(documentName)) {
+					original = currentDoc;
+				}
+				else if (!currentName.equals(documentName) && currentName.startsWith(documentName)) {
+					translation = currentDoc;
 				}
 			}
-		}
-		if (used.size() != documentNames.size()) {
-			// throw exception
+			if (original == null || translation == null) {
+				throw new PepperModuleException("Documents could not be matched by names.");
+			}
+			documentPairs.add( Pair.of(original, translation) );
 		}
 		if (documentPairs.isEmpty()) {
 			return;
@@ -133,6 +155,10 @@ public class Aligner extends PepperManipulatorImpl {
 			labels.stream().forEach(targetGraph::addLabel);			
 		}
 		removeDocuments.stream().forEach(corpusGraph::removeNode);
+	}
+	
+	private int[][][] getAlignmentByDocumentName(String name) {
+		return alignmentMap.get(name);
 	}
 
 	/**
@@ -180,7 +206,7 @@ public class Aligner extends PepperManipulatorImpl {
 		public DOCUMENT_STATUS mapSDocument() {
 			SDocumentGraph graph = getDocument().getDocumentGraph();
 			AlignerProperties properties = (AlignerProperties) Aligner.this.getProperties();
-			int[][][] alignment = properties.getAlignmentData();
+			int[][][] alignment = Aligner.this.getAlignmentByDocumentName( getDocument().getName() );
 			String sentenceName = properties.getSentenceName();
 			int sOffset = properties.getSmallestSentenceValue();
 			List<SSpan> spans = graph.getSpans();

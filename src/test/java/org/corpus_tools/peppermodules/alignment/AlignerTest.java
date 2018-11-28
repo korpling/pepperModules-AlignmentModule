@@ -5,7 +5,6 @@ import static org.junit.Assert.assertEquals;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -59,7 +58,7 @@ public class AlignerTest extends PepperManipulatorTest {
 		SCorpusGraph expectedOutput = new AlignedDemoTargetGraph().getCorpusGraph();
 		Aligner manipulator = (Aligner) getFixture();
 		AlignerProperties properties = new AlignerProperties();
-		properties.setPropertyValue(AlignerProperties.PROP_ALIGNMENT_MAP_PATH, "src/test/resources/test.align");
+		properties.setPropertyValue(AlignerProperties.PROP_ALIGNMENT_FILES_DIR, "src/test/resources/");
 		properties.setPropertyValue(AlignerProperties.PROP_SMALLEST_SENTENCE_VALUE, 1);
 		manipulator.setProperties(properties);
 		SaltProject project = SaltFactory.createSaltProject();

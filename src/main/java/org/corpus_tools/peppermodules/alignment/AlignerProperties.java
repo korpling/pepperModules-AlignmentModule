@@ -10,7 +10,7 @@ import org.corpus_tools.pepper.modules.exceptions.PepperModuleException;
 
 public class AlignerProperties extends PepperModuleProperties {
 	/** provides a path to the alignment configuration */
-	public static final String PROP_ALIGNMENT_MAP_PATH = "map.path";
+	public static final String PROP_ALIGNMENT_FILES_DIR = "alignment.dir";
 	/** name of sentence span annotation */
 	public static final String PROP_SENTENCE_NAME = "sentence.name";
 	/** smallest sentence index used in data (usually 0 or 1) **/
@@ -18,7 +18,7 @@ public class AlignerProperties extends PepperModuleProperties {
 	
 	public AlignerProperties() {
 		addProperty(PepperModuleProperty.create()
-				.withName(PROP_ALIGNMENT_MAP_PATH)
+				.withName(PROP_ALIGNMENT_FILES_DIR)
 				.withType(String.class)
 				.withDescription("provides a path to the alignment configuration")
 				.isRequired(true)
@@ -39,19 +39,11 @@ public class AlignerProperties extends PepperModuleProperties {
 				.build());
 	}
 	
-	/** This reads the alignment csv file.
-	 * @return An array with dimensions (max. sentence index, max alignment mapping index, 2)
+	/** This method provides the path where the alignment is to be read from. There is one {@value Aligner#ALIGNMENT_FILE_ENDING}-file per document to be aligned with another, non-mentioned document.
+	 * @return The directory containing the alignment files.
 	 *  */
-	public int[][][] getAlignmentData() {
-		String path = (String) getProperty(PROP_ALIGNMENT_MAP_PATH).getValue();
-		int[][][] alignmentData = null;
-		try {
-			ObjectInputStream inputStream = new ObjectInputStream( new FileInputStream(path) );
-			alignmentData = (int[][][]) inputStream.readObject();
-		} catch (IOException | ClassNotFoundException e) {
-			throw new PepperModuleException(e.getClass() + " when reading alignment map path.");
-		}		
-		return alignmentData;
+	public String getAlignmentDir() {
+		return (String) getProperty(PROP_ALIGNMENT_FILES_DIR).getValue();
 	}
 	
 	/**
@@ -67,6 +59,6 @@ public class AlignerProperties extends PepperModuleProperties {
 	 * @return the smallest sentence value as Integer
 	 */
 	public int getSmallestSentenceValue() {
-		return (Integer) getProperty(PROP_SMALLEST_SENTENCE_VALUE).getValue();
+		return (int) getProperty(PROP_SMALLEST_SENTENCE_VALUE).getValue();
 	}
 }
