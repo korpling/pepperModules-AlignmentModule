@@ -160,43 +160,13 @@ public class Aligner extends PepperManipulatorImpl {
 	private int[][][] getAlignmentByDocumentName(String name) {
 		return alignmentMap.get(name);
 	}
-
-	/**
-	 * <strong>OVERRIDE THIS METHOD FOR CUSTOMIZATION</strong> <br/>
-	 * This method creates a customized {@link PepperMapper} object and returns
-	 * it. You can here do some additional initialisations. Thinks like setting
-	 * the {@link Identifier} of the {@link SDocument} or {@link SCorpus} object
-	 * and the {@link URI} resource is done by the framework (or more in detail
-	 * in method {@link #start()}). The parameter <code>Identifier</code>, if a
-	 * {@link PepperMapper} object should be created in case of the object to
-	 * map is either an {@link SDocument} object or an {@link SCorpus} object of
-	 * the mapper should be initialized differently. <br/>
-	 * 
-	 * @param Identifier
-	 *            {@link Identifier} of the {@link SCorpus} or {@link SDocument}
-	 *            to be processed.
-	 * @return {@link PepperMapper} object to do the mapping task for object
-	 *         connected to given {@link Identifier}
-	 */
+	
 	public PepperMapper createPepperMapper(Identifier Identifier) {
 		AlignmentMapper mapper = new AlignmentMapper();
 		mapper.setDocument( getSaltProject().getCorpusGraphs().get(0).getDocument(Identifier) );
 		return (mapper);
 	}
 
-	/**
-	 * This class is a dummy implementation for a mapper, to show how it works.
-	 * Pepper or more specific this dummy implementation of a Pepper module
-	 * creates one mapper object per {@link SDocument} object and
-	 * {@link SCorpus} object each. This ensures, that each of those objects is
-	 * run independently from another and runs parallelized. <br/>
-	 * The method {@link #mapSCorpus()} is supposed to handle all
-	 * {@link SCorpus} object and the method {@link #mapSDocument()} is supposed
-	 * to handle all {@link SDocument} objects. <br/>
-	 * In our dummy implementation, we just print out some information about a
-	 * corpus to system.out. This is not very useful, but might be a good
-	 * starting point to explain how access the several objects in Salt model.
-	 */
 	public class AlignmentMapper extends PepperMapperImpl {
 		
 		/**
@@ -235,24 +205,5 @@ public class Aligner extends PepperManipulatorImpl {
 			graph.removeLayer(probe);
 			return (DOCUMENT_STATUS.COMPLETED);
 		}
-	}
-
-	// =================================================== optional
-	// ===================================================
-	/**
-	 * <strong>OVERRIDE THIS METHOD FOR CUSTOMIZATION</strong> <br/>
-	 * This method is called by the pepper framework after initializing this
-	 * object and directly before start processing. Initializing means setting
-	 * properties {@link PepperModuleProperties}, setting temporary files,
-	 * resources etc. . returns false or throws an exception in case of
-	 * {@link PepperModule} instance is not ready for any reason.
-	 * 
-	 * @return false, {@link PepperModule} instance is not ready for any reason,
-	 *         true, else.
-	 */
-	@Override
-	public boolean isReadyToStart() throws PepperModuleNotReadyException {
-		// TODO make some initializations if necessary
-		return (super.isReadyToStart());
 	}
 }

@@ -54,29 +54,41 @@ public class AlignerTest extends PepperManipulatorTest {
 	
 	@Test
 	public void testAlignment() {
-		SCorpusGraph sourceGraph = new AlignedDemoSourceGraph().getCorpusGraph();
-		SCorpusGraph expectedOutput = new AlignedDemoTargetGraph().getCorpusGraph();
 		Aligner manipulator = (Aligner) getFixture();
 		AlignerProperties properties = new AlignerProperties();
-		properties.setPropertyValue(AlignerProperties.PROP_ALIGNMENT_FILES_DIR, "src/test/resources/");
-		properties.setPropertyValue(AlignerProperties.PROP_SMALLEST_SENTENCE_VALUE, 1);
-		manipulator.setProperties(properties);
+		{
+			properties.setPropertyValue(AlignerProperties.PROP_ALIGNMENT_FILES_DIR, "src/test/resources/");
+			properties.setPropertyValue(AlignerProperties.PROP_SMALLEST_SENTENCE_VALUE, 1);
+			properties.setPropertyValue(AlignerProperties.PROP_SENTENCE_NAME, AlignedDemoSourceGraph.ANNO_NAME_SENTENCE);
+			manipulator.setProperties(properties);
+		}
 		SaltProject project = SaltFactory.createSaltProject();
-		project.addCorpusGraph(sourceGraph);
-		manipulator.setSaltProject(project);
-		manipulator.setCorpusGraph(sourceGraph);
+		SCorpusGraph sourceGraph = new AlignedDemoSourceGraph().getCorpusGraph();
+		SCorpusGraph expectedOutput = new AlignedDemoTargetGraph().getCorpusGraph();
+		{
+			project.addCorpusGraph(sourceGraph);
+			manipulator.setSaltProject(project);
+			manipulator.setCorpusGraph(sourceGraph);			
+		}
 		manipulator.mergeDocuments();
 		SCorpusGraph generatedOutput = manipulator.getCorpusGraph();
-		assertEquals(expectedOutput.getDocuments().size(), generatedOutput.getDocuments().size());
+		{
+			assertEquals(expectedOutput.getDocuments().size(), generatedOutput.getDocuments().size());
+		}		
 		PepperMapper mapper = manipulator.createPepperMapper( generatedOutput.getDocuments().get(0).getIdentifier() );
-		mapper.mapSDocument();
+		{
+			mapper.mapSDocument();
+		}		
 		Set<Difference> diffSet = expectedOutput.getDocuments().get(0).getDocumentGraph().findDiffs(generatedOutput.getDocuments().get(0).getDocumentGraph());
-		assertEquals(expectedOutput.getDocuments().get(0).getDocumentGraph().getRelations().size(), mapper.getDocument().getDocumentGraph().getRelations().size());
-		assertEquals(diffSet.toString(), 0, diffSet.size());
+		{
+			assertEquals(expectedOutput.getDocuments().get(0).getDocumentGraph().getRelations().size(), mapper.getDocument().getDocumentGraph().getRelations().size());
+			assertEquals(diffSet.toString(), 0, diffSet.size());			
+		}
 	}
 	
 	private static class AlignedDemoSourceGraph {
 		protected SCorpusGraph graph = null;
+		protected static final String ANNO_NAME_SENTENCE = "sentence";
 		protected static final String SOURCE_TEXT_EN = "Documents made to be aligned by you, Pepper!";
 		protected static final String SOURCE_TEXT_DE = "Dokumente, gemacht von dir aligniert zu werden, Pepper!";
 		private AlignedDemoSourceGraph() {
@@ -88,14 +100,14 @@ public class AlignerTest extends PepperManipulatorTest {
 				for (SToken tok : docGraph.createTextualDS(SOURCE_TEXT_EN).tokenize()) {
 					tok.createAnnotation(null, "pos", "any");
 				}
-				docGraph.createSpan( docGraph.getTokens() ).createAnnotation(null, "sentence", "1");
+				docGraph.createSpan( docGraph.getTokens() ).createAnnotation(null, ANNO_NAME_SENTENCE, "1");
 			}
 			{
 				SDocumentGraph docGraph = graph.createDocument(corpus, "en_de").createDocumentGraph();
 				for (SToken tok : docGraph.createTextualDS(SOURCE_TEXT_DE).tokenize()) {
 					tok.createAnnotation(null, "pos", "any");
 				}
-				docGraph.createSpan( docGraph.getTokens() ).createAnnotation(null, "sentence", "1");
+				docGraph.createSpan( docGraph.getTokens() ).createAnnotation(null, ANNO_NAME_SENTENCE, "1");
 			}
 		}
 		
@@ -131,7 +143,7 @@ public class AlignerTest extends PepperManipulatorTest {
 					tok.createAnnotation(null, "pos", "any");
 				}
 				List<SToken> enTokens = docGraph.getSortedTokenByText();
-				docGraph.createSpan(enTokens).createAnnotation(null, "sentence", "1");
+				docGraph.createSpan(enTokens).createAnnotation(null, ANNO_NAME_SENTENCE, "1");
 				int tIx = 0;
 				List<SToken> deTokens = new ArrayList<>();
 				for (SToken tok : docGraph.createTextualDS(SOURCE_TEXT_DE).tokenize()) {
@@ -144,7 +156,7 @@ public class AlignerTest extends PepperManipulatorTest {
 					deTokens.add(tok);
 					tIx++;
 				}
-				docGraph.createSpan(deTokens).createAnnotation(null, "sentence", "1");
+				docGraph.createSpan(deTokens).createAnnotation(null, ANNO_NAME_SENTENCE, "1");
 			}
 		}
 		
