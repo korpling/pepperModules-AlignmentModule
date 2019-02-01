@@ -159,15 +159,5 @@ public class AlignerTest extends PepperManipulatorTest {
 				docGraph.createSpan(deTokens).createAnnotation(null, ANNO_NAME_SENTENCE, "1");
 			}
 		}
-		
-		private void serializeAlignment(String path) {
-			try {
-				ObjectOutputStream out = new ObjectOutputStream( new FileOutputStream(path) );
-				out.writeObject(ALIGNMENTS);
-				out.close();
-			} catch (IOException e) {
-				throw new PepperModuleTestException();
-			}			
-		}
 	}
 }
