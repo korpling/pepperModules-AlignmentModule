@@ -1,26 +1,23 @@
 package org.corpus_tools.peppermodules.alignment;
 
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-
 import org.corpus_tools.pepper.modules.PepperModuleProperties;
 import org.corpus_tools.pepper.modules.PepperModuleProperty;
-import org.corpus_tools.pepper.modules.exceptions.PepperModuleException;
 
 public class AlignerProperties extends PepperModuleProperties {
-	/** provides a path to the alignment configuration */
-	public static final String PROP_ALIGNMENT_FILES_DIR = "alignment.dir";
+	/** Provides a path to a file containing the alignment by file name. */
+	public static final String PROP_ALIGNMENT_FILE = "alignment.file";
 	/** name of sentence span annotation */
 	public static final String PROP_SENTENCE_NAME = "sentence.name";
 	/** smallest sentence index used in data (usually 0 or 1) **/
 	public static final String PROP_SMALLEST_SENTENCE_VALUE = "sentence.smallest.value";
+	/** suffix identifying an counter file */
+	public static final String PROP_SUFFIX = "alignment.suffix";
 	
 	public AlignerProperties() {
 		addProperty(PepperModuleProperty.create()
-				.withName(PROP_ALIGNMENT_FILES_DIR)
+				.withName(PROP_ALIGNMENT_FILE)
 				.withType(String.class)
-				.withDescription("provides a path to the alignment configuration")
+				.withDescription("Provides a path to a file containing the alignment by file name.")
 				.isRequired(true)
 				.build());
 		addProperty(PepperModuleProperty.create()
@@ -37,13 +34,20 @@ public class AlignerProperties extends PepperModuleProperties {
 				.withDefaultValue(0)
 				.isRequired(false)
 				.build());
+		addProperty(PepperModuleProperty.create()
+				.withName(PROP_SUFFIX)
+				.withType(String.class)
+				.withDescription("TODO")
+				.isRequired(true)
+				.build()
+				);
 	}
 	
 	/** This method provides the path where the alignment is to be read from. There is one {@value Aligner#ALIGNMENT_FILE_ENDING}-file per document to be aligned with another, non-mentioned document.
 	 * @return The directory containing the alignment files.
 	 *  */
-	public String getAlignmentDir() {
-		return (String) getProperty(PROP_ALIGNMENT_FILES_DIR).getValue();
+	public String getAlignmentFile() {
+		return (String) getProperty(PROP_ALIGNMENT_FILE).getValue();
 	}
 	
 	/**
@@ -58,7 +62,11 @@ public class AlignerProperties extends PepperModuleProperties {
 	 * Returns the smallest sentence index used. Usually this is zero or one.
 	 * @return the smallest sentence value as Integer
 	 */
-	public int getSmallestSentenceValue() {
-		return (int) getProperty(PROP_SMALLEST_SENTENCE_VALUE).getValue();
+	public Integer getSmallestSentenceValue() {
+		return (Integer) getProperty(PROP_SMALLEST_SENTENCE_VALUE).getValue();
+	}
+	
+	public String getSuffix() {
+		return (String) getProperty(PROP_SUFFIX).getValue();
 	}
 }
