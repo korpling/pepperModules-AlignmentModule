@@ -57,7 +57,7 @@ public class AlignerTest extends PepperManipulatorTest {
 		Aligner manipulator = (Aligner) getFixture();
 		AlignerProperties properties = new AlignerProperties();
 		{
-			properties.setPropertyValue(AlignerProperties.PROP_ALIGNMENT_FILES_DIR, "src/test/resources/");
+			properties.setPropertyValue(AlignerProperties.PROP_ALIGNMENT_FILE, "src/test/resources/en.json");
 			properties.setPropertyValue(AlignerProperties.PROP_SMALLEST_SENTENCE_VALUE, 1);
 			properties.setPropertyValue(AlignerProperties.PROP_SENTENCE_NAME, AlignedDemoSourceGraph.ANNO_NAME_SENTENCE);
 			manipulator.setProperties(properties);
@@ -70,7 +70,7 @@ public class AlignerTest extends PepperManipulatorTest {
 			manipulator.setSaltProject(project);
 			manipulator.setCorpusGraph(sourceGraph);			
 		}
-		manipulator.mergeDocuments();
+		manipulator.mergeDocuments(sourceGraph.getDocuments().get(0), sourceGraph.getDocuments().get(1));
 		SCorpusGraph generatedOutput = manipulator.getCorpusGraph();
 		{
 			assertEquals(expectedOutput.getDocuments().size(), generatedOutput.getDocuments().size());

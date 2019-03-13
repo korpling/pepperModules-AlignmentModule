@@ -154,7 +154,11 @@ public class Aligner extends PepperManipulatorImpl {
 		SDocument baseDocument = (SDocument) a.getIdentifiableElement();
 		SDocument donatingDocument = (SDocument) b.getIdentifiableElement();
 		DocumentController baseDC = getDocumentId2DC().get(baseDocument.getId());
-		DocumentController donaterDC = getDocumentId2DC().get(donatingDocument.getId());
+		DocumentController donaterDC = null;
+		while (donaterDC == null) {
+			donaterDC = getDocumentId2DC().get(donatingDocument.getId());	
+		}		 
+		System.out.println(getDocumentId2DC());
 		while (!(donaterDC.getCurrentModuleController().getPepperModule() instanceof Aligner)) {
 			baseDC.sendToSleep();
 		}		
@@ -189,7 +193,7 @@ public class Aligner extends PepperManipulatorImpl {
 		graph.removeLayer(probe);
 	}
 	
-	private void mergeDocuments(SDocument baseDocument, SDocument donatingDocument) {
+	void mergeDocuments(SDocument baseDocument, SDocument donatingDocument) {
 		SDocumentGraph targetGraph = baseDocument.getDocumentGraph();
 		SLayer layerNew = SaltFactory.createSLayer();
 		layerNew.setName(LAYER_NAME_NEW);
