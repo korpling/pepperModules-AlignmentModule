@@ -94,7 +94,6 @@ public class Aligner extends PepperManipulatorImpl {
 			String sourceAnnoQName = getAlignerProperties().getSourceAnnoQName();
 			String targetAnnoQName = getAlignerProperties().getTargetAnnoQName();
 			align(getId2TokenMap(sourceTextName, sourceAnnoQName), getId2TokenMap(targetTextName, targetAnnoQName));
-//			finalize(sourceTextName, targetTextName);
 			return (DOCUMENT_STATUS.COMPLETED);
 		}
 		
@@ -201,36 +200,6 @@ public class Aligner extends PepperManipulatorImpl {
 			}
 			graph.removeNode(graph.getTimeline());
 			graph.getTimelineRelations().stream().forEach(graph::removeRelation);
-		}
-		
-		private void finalize(String dsNameFirst, String dsNameSecond) {	
-			SDocumentGraph graph = getDocument().getDocumentGraph();		
-			STextualDS first = getDSbyName(dsNameFirst);
-			STextualDS second = getDSbyName(dsNameSecond);
-			List<SToken> firstTokens = graph.getSortedTokenByText(getTokensByDS(first));
-			List<SToken> secondTokens = graph.getSortedTokenByText(getTokensByDS(second));
-			STextualDS finalDS = graph.createTextualDS(first.getText() + second.getText());
-			SToken last = null;
-			for (SToken tok : firstTokens) {				
-				tok.getOutRelations().stream().filter((SRelation r) -> r instanceof STextualRelation).findFirst().get().setTarget(finalDS);
-				if (last != null) {
-					graph.createRelation(last, tok, SALT_TYPE.SORDER_RELATION, null).setType("text1");
-				}
-				last = tok;
-			}
-			last = null;
-			for (SToken tok : secondTokens) {
-				STextualRelation tRel = (STextualRelation) tok.getOutRelations().stream().filter((SRelation r) -> r instanceof STextualRelation).findFirst().get();
-				tRel.setTarget(finalDS);
-				tRel.setEnd(tRel.getEnd() + first.getText().length());
-				tRel.setStart(tRel.getStart() + first.getText().length());
-				if (last != null) {
-					graph.createRelation(last, tok, SALT_TYPE.SORDER_RELATION, null).setType("text2");
-				}
-				last = tok;
-			}
-			graph.removeNode(first);
-			graph.removeNode(second);
 		}
 	}
 }
