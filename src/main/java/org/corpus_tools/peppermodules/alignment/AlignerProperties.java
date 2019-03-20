@@ -4,69 +4,69 @@ import org.corpus_tools.pepper.modules.PepperModuleProperties;
 import org.corpus_tools.pepper.modules.PepperModuleProperty;
 
 public class AlignerProperties extends PepperModuleProperties {
-	/** Provides a path to a file containing the alignment by file name. */
-	public static final String PROP_ALIGNMENT_FILE = "alignment.file";
-	/** name of sentence span annotation */
-	public static final String PROP_SENTENCE_NAME = "sentence.name";
-	/** smallest sentence index used in data (usually 0 or 1) **/
-	public static final String PROP_SMALLEST_SENTENCE_VALUE = "sentence.smallest.value";
-	/** suffix identifying an counter file */
-	public static final String PROP_SUFFIX = "alignment.suffix";
+	/** The name of the text containing the source */
+	public static final String PROP_TEXT_NAME_SOURCE = "source.text.name";
+	/** The name of the text containing the target */
+	public static final String PROP_TEXT_NAME_TARGET = "target.text.name";
+	/** The qualified name of the alignment annotation name on the source */
+	public static final String PROP_ANNO_NAME_SOURCE = "source.anno.qname";
+	/** The qualified name of the alignment annotation name on the target */
+	public static final String PROP_ANNO_NAME_TARGET = "target.anno.qname";
+	/** If you want to additionally label the alignment edges, provide a name for the token or span annotation here. The annotation will be searched on both source and target tokens to be more flexible, values need to be identical if you use both. */
+	public static final String PROP_ANNO_QNAME_ALIGN_LABEL = "label.anno.qname";
 	
 	public AlignerProperties() {
 		addProperty(PepperModuleProperty.create()
-				.withName(PROP_ALIGNMENT_FILE)
+				.withName(PROP_TEXT_NAME_SOURCE)
 				.withType(String.class)
-				.withDescription("Provides a path to a file containing the alignment by file name.")
+				.withDescription("The name of the text containing the source.")
 				.isRequired(true)
 				.build());
 		addProperty(PepperModuleProperty.create()
-				.withName(PROP_SENTENCE_NAME)
+				.withName(PROP_TEXT_NAME_TARGET)
 				.withType(String.class)
-				.withDescription("name of sentence span annotation")
-				.withDefaultValue("sentence")
-				.isRequired(false)
-				.build());
-		addProperty(PepperModuleProperty.create()
-				.withName(PROP_SMALLEST_SENTENCE_VALUE)
-				.withType(Integer.class)
-				.withDescription("smallest sentence index used in data (usually 0 or 1)")
-				.withDefaultValue(0)
-				.isRequired(false)
-				.build());
-		addProperty(PepperModuleProperty.create()
-				.withName(PROP_SUFFIX)
-				.withType(String.class)
-				.withDescription("TODO")
+				.withDescription("The name of the text containing the target.")
 				.isRequired(true)
-				.build()
-				);
+				.build());
+		addProperty(PepperModuleProperty.create()
+				.withName(PROP_ANNO_NAME_SOURCE)
+				.withType(String.class)
+				.withDescription("The qualified name of the alignment annotation name on the source.")
+				.isRequired(true)
+				.build());
+		addProperty(PepperModuleProperty.create()
+				.withName(PROP_ANNO_NAME_TARGET)
+				.withType(String.class)
+				.withDescription("The qualified name of the alignment annotation name on the target.")
+				.isRequired(true)
+				.build());
+		addProperty(PepperModuleProperty.create()
+				.withName(PROP_ANNO_QNAME_ALIGN_LABEL)
+				.withType(String.class)
+				.withDescription("If you want to additionally label the alignment edges, provide a name for the token or span annotation here. The annotation will be searched on both source and target tokens to be more flexible, values need to be identical if you use both.")
+				.withDefaultValue(null)
+				.isRequired(false)
+				.build());
 	}
 	
-	/** This method provides the path where the alignment is to be read from. There is one {@value Aligner#ALIGNMENT_FILE_ENDING}-file per document to be aligned with another, non-mentioned document.
-	 * @return The directory containing the alignment files.
-	 *  */
-	public String getAlignmentFile() {
-		return (String) getProperty(PROP_ALIGNMENT_FILE).getValue();
+	public String getSourceTextName() {
+		return (String) getProperty(PROP_TEXT_NAME_SOURCE).getValue();
 	}
 	
-	/**
-	 * Provides the annotation name for sentence spans.
-	 * @return sentence annotation name
-	 */
-	public String getSentenceName() {
-		return (String) getProperty(PROP_SENTENCE_NAME).getValue();
+	public String getTargetTextName() {
+		return (String) getProperty(PROP_TEXT_NAME_TARGET).getValue();
 	}
 	
-	/**
-	 * Returns the smallest sentence index used. Usually this is zero or one.
-	 * @return the smallest sentence value as Integer
-	 */
-	public Integer getSmallestSentenceValue() {
-		return (Integer) getProperty(PROP_SMALLEST_SENTENCE_VALUE).getValue();
+	public String getSourceAnnoQName() {
+		return (String) getProperty(PROP_ANNO_NAME_SOURCE).getValue();
 	}
 	
-	public String getSuffix() {
-		return (String) getProperty(PROP_SUFFIX).getValue();
+	public String getTargetAnnoQName() {
+		return (String) getProperty(PROP_ANNO_NAME_TARGET).getValue();
+	}
+	
+	public String getAlignmentLabelAnnoQName() {
+		Object value = getProperty(PROP_ANNO_QNAME_ALIGN_LABEL).getValue();
+		return value == null? null : (String) value;
 	}
 }

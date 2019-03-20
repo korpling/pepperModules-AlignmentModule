@@ -1,42 +1,38 @@
 package org.corpus_tools.peppermodules.alignment;
 
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.NoSuchElementException;
+import java.util.Optional;
+import java.util.Set;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.corpus_tools.pepper.common.DOCUMENT_STATUS;
 import org.corpus_tools.pepper.common.PepperConfiguration;
 import org.corpus_tools.pepper.impl.PepperManipulatorImpl;
 import org.corpus_tools.pepper.impl.PepperMapperImpl;
-import org.corpus_tools.pepper.modules.DocumentController;
 import org.corpus_tools.pepper.modules.PepperManipulator;
 import org.corpus_tools.pepper.modules.PepperMapper;
 import org.corpus_tools.pepper.modules.exceptions.PepperModuleDataException;
-import org.corpus_tools.pepper.modules.exceptions.PepperModuleException;
 import org.corpus_tools.salt.SALT_TYPE;
 import org.corpus_tools.salt.SaltFactory;
-import org.corpus_tools.salt.common.SCorpusGraph;
-import org.corpus_tools.salt.common.SDocument;
 import org.corpus_tools.salt.common.SDocumentGraph;
+import org.corpus_tools.salt.common.SPointingRelation;
 import org.corpus_tools.salt.common.SSpan;
+import org.corpus_tools.salt.common.SSpanningRelation;
+import org.corpus_tools.salt.common.STextualDS;
+import org.corpus_tools.salt.common.STextualRelation;
 import org.corpus_tools.salt.common.SToken;
 import org.corpus_tools.salt.core.SAnnotation;
 import org.corpus_tools.salt.core.SLayer;
-import org.corpus_tools.salt.core.SNode;
 import org.corpus_tools.salt.core.SRelation;
 import org.corpus_tools.salt.graph.Identifier;
-import org.corpus_tools.salt.graph.Label;
+import org.corpus_tools.salt.util.DataSourceSequence;
 import org.eclipse.emf.common.util.URI;
 import org.osgi.service.component.annotations.Component;
-
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.reflect.TypeToken;
-import com.google.gson.stream.JsonReader;
 
 /**
  * This is a dummy implementation to show how a {@link PepperManipulator} works.
@@ -79,157 +75,162 @@ public class Aligner extends PepperManipulatorImpl {
 		setProperties(new AlignerProperties());
 	}
 	
-	@Override
-	public void start() {
-		if (getSaltProject() == null || getSaltProject().getCorpusGraphs().isEmpty()) {
-			// instead of handling the exception just pass on to super implementation, that takes care of the exception or provides an alternative plan  FIXME?
-			super.start();
-		}		
-		prepareMergeOfDocuments();
-		super.start();
-	}
-	
-	/**
-	 * FIXME this method is public since testing this is impossible without a document controller being set in advance ... look into this
-	 */
-	public void prepareMergeOfDocuments() {
-		String path = "<not set>";
-		try {
-			path = ((AlignerProperties) getProperties()).getAlignmentFile();
-			int i = 0;
-			GsonBuilder builder = new GsonBuilder();
-			Gson gson = builder.create();
-			JsonReader reader = new JsonReader( new FileReader(path) );
-			TypeToken<?> tt = new TypeToken<Map<String, int[][][]>>(){};
-			alignmentMap = gson.fromJson(reader, tt.getType());
-		} catch (IOException e) {
-			throw new PepperModuleException("An error occured reading the alignment files: " + path);
-		}
-		SCorpusGraph corpusGraph = getSaltProject().getCorpusGraphs().get(0);
-		base2donatingDocument = new HashMap<>();
-		String suffix = ((AlignerProperties) getProperties()).getSuffix();
-		for (String documentName : alignmentMap.keySet()) {
-			SDocument original = null;
-			SDocument translation = null;
-			for (Iterator<SDocument> docs = corpusGraph.getDocuments().iterator(); (original==null || translation==null) && docs.hasNext(); ) {
-				SDocument currentDoc = docs.next();
-				String currentName = currentDoc.getName();
-				if (currentName.equals(documentName)) {
-					original = currentDoc;
-				}
-				else if (currentName.equals(documentName + suffix)) {
-					translation = currentDoc;
-				}
-			}
-			if (original != null && translation != null) {
-				base2donatingDocument.put(original.getIdentifier(), translation.getIdentifier());	
-			}
-		}
-		if (base2donatingDocument.isEmpty()) {
-			return;
-		}
-//		corpusGraph.getDocuments().stream().filter((SDocument d) -> !base2donatingDocument.containsKey(d)).forEach(corpusGraph::removeNode);
-	}
-	
-	private int[][][] getAlignmentByDocumentName(String name) {
-		return alignmentMap.get(name);
-	}
-	
 	public PepperMapper createPepperMapper(Identifier Identifier) {
 		AlignmentMapper mapper = new AlignmentMapper();
-		SDocument document = getSaltProject().getCorpusGraphs().get(0).getDocument(Identifier);
-		if (document != null) { 
-			mapper.setDocument(document);
-		}
-		mapper.setAligner(this);
 		return (mapper);
-	}
-	
-	public boolean isReadyToAlign(Identifier sElementId) {
-
-		return false;
-	}
-	
-	public synchronized void align(Identifier a, Identifier b) {
-		SDocument baseDocument = (SDocument) a.getIdentifiableElement();
-		SDocument donatingDocument = (SDocument) b.getIdentifiableElement();
-		DocumentController baseDC = getDocumentId2DC().get(baseDocument.getId());
-		DocumentController donaterDC = null;
-		while (donaterDC == null) {
-			donaterDC = getDocumentId2DC().get(donatingDocument.getId());	
-		}		 
-		System.out.println(getDocumentId2DC());
-		while (!(donaterDC.getCurrentModuleController().getPepperModule() instanceof Aligner)) {
-			baseDC.sendToSleep();
-		}		
-		SDocumentGraph graph = baseDocument.getDocumentGraph();
-		mergeDocuments(baseDocument, donatingDocument);
-		AlignerProperties properties = (AlignerProperties) Aligner.this.getProperties();
-		int[][][] alignment = Aligner.this.getAlignmentByDocumentName( baseDocument.getName() );
-		String sentenceName = properties.getSentenceName();
-		int sOffset = properties.getSmallestSentenceValue();
-		List<SSpan> spans = graph.getSpans();
-		SSpan[][] spanPairs = new SSpan[alignment.length][2];
-		SLayer probe = graph.getLayerByName(LAYER_NAME_NEW).get(0);
-		for (SSpan span : spans) {
-			SAnnotation sentenceAnno = span.getAnnotation(sentenceName); 
-			if (sentenceAnno != null) {
-				int sentenceIx = Integer.parseInt( sentenceAnno.getValue_STEXT() ) - sOffset;
-				int writeIx = 0;
-				if (span.getLayers().contains(probe)) {
-					writeIx++;
-				}
-				spanPairs[sentenceIx][writeIx] = span;
-			}
-		}
-		for (int i=0; i < alignment.length; i++) {
-			List<SToken> sourceTokens = graph.getSortedTokenByText( graph.getOverlappedTokens(spanPairs[i][0]) );
-			List<SToken> targetTokens = graph.getSortedTokenByText( graph.getOverlappedTokens(spanPairs[i][1]) );
-			for (int[] alignPair : alignment[i]) {
-				graph.createRelation(sourceTokens.get(alignPair[0]), targetTokens.get(alignPair[1]), SALT_TYPE.SPOINTING_RELATION, null).setType(ALIGNMENT_NAME);
-			}
-		}
-		graph.getNodes().stream().forEach((SNode n) -> n.removeLayer(probe));
-		graph.removeLayer(probe);
-	}
-	
-	void mergeDocuments(SDocument baseDocument, SDocument donatingDocument) {
-		SDocumentGraph targetGraph = baseDocument.getDocumentGraph();
-		SLayer layerNew = SaltFactory.createSLayer();
-		layerNew.setName(LAYER_NAME_NEW);
-		layerNew.setGraph(targetGraph);
-		SDocumentGraph sourceGraph = donatingDocument.getDocumentGraph();
-		List<SNode> nodes = new ArrayList<>();
-		sourceGraph.getNodes().stream().forEach(nodes::add);
-		List<SRelation<SNode, SNode>> relations = new ArrayList<>();
-		sourceGraph.getRelations().stream().forEach(relations::add);
-		List<Label> labels = new ArrayList<>();
-		sourceGraph.getAnnotations().stream().forEach(labels::add);
-		nodes.stream().forEach(targetGraph::addNode);
-		nodes.stream().forEach(layerNew::addNode);
-		relations.stream().forEach(targetGraph::addRelation);
-		labels.stream().forEach(targetGraph::addLabel);		
 	}
 
 	public class AlignmentMapper extends PepperMapperImpl {
-		
+		private static final String ERR_MSG_NO_SUCH_TEXT = "No such text: ";
+		private static final String ERR_MSG_LABEL_ANNO_ERR = "Cannot even partially assign edge labels. No such annotation: {}. Check the provided annotation name or do not set property '" + AlignerProperties.PROP_ANNO_QNAME_ALIGN_LABEL + "'.";
+		private static final String ALIGNMENT_EDGE_TYPE = "align";		
 		/**
 		 * prints out some information about document-structure
 		 */
 		@Override
 		public DOCUMENT_STATUS mapSDocument() {
-			if (!base2donatingDocument.containsKey( getDocument().getIdentifier() )) {
-				logger.warn("Document should not be mapped!");
-				getDocumentId2DC().get( getDocument().getId() ).sendToSleep();
-				return DOCUMENT_STATUS.DELETED;
-			}
-			aligner.align(getDocument().getIdentifier(), base2donatingDocument.get( getDocument().getIdentifier() ));
+			String sourceTextName = getAlignerProperties().getSourceTextName();
+			String targetTextName = getAlignerProperties().getTargetTextName();
+			String sourceAnnoQName = getAlignerProperties().getSourceAnnoQName();
+			String targetAnnoQName = getAlignerProperties().getTargetAnnoQName();
+			align(getId2TokenMap(sourceTextName, sourceAnnoQName), getId2TokenMap(targetTextName, targetAnnoQName));
+//			finalize(sourceTextName, targetTextName);
 			return (DOCUMENT_STATUS.COMPLETED);
 		}
 		
-		private Aligner aligner = null;
-		public void setAligner(Aligner aligner) {
-			this.aligner = aligner;
+		private AlignerProperties getAlignerProperties() {
+			return ((AlignerProperties) getProperties());
+		}
+		
+		private List<SToken> getTokensByDS(STextualDS ds) {
+			DataSourceSequence<Number> dss = new DataSourceSequence<Number>(ds, ds.getStart(), ds.getEnd());
+			return getDocument().getDocumentGraph().getTokensBySequence(dss);
+		}
+		
+		private STextualDS getDSbyName(String dsName) {
+			try { 
+				return getDocument().getDocumentGraph().getTextualDSs().stream().filter((STextualDS tds) -> dsName.equals(tds.getName())).findFirst().get();
+			} 
+			catch (NoSuchElementException e) {
+				throw new PepperModuleDataException(this, ERR_MSG_NO_SUCH_TEXT + dsName, e);
+			}
+		}
+		
+		private Map<String, SToken> getId2TokenMap(final String textName, final String annoQName) {
+			SDocumentGraph graph = getDocument().getDocumentGraph();
+			SLayer tokenLayer = SaltFactory.createSLayer();
+			tokenLayer.setName(textName);
+			tokenLayer.setGraph(graph);
+			STextualDS ds = getDSbyName(textName);			
+			Map<SToken, SSpan> token2SpanMap = new HashMap<>();
+			for (SSpan span : graph.getSpans()) {
+				List<SToken> overlappedTokens = graph.getOverlappedTokens(span);
+				if (overlappedTokens.size() == 1 && span.getAnnotation(annoQName) != null) {
+					token2SpanMap.put(overlappedTokens.get(0), span);
+				}
+			}
+			List<SToken> tokens = getTokensByDS(ds);
+			tokens.stream().forEach(tokenLayer::addNode);
+			Map<String, SToken> id2TokenMap = new HashMap<>();
+			for (SToken tok : tokens) {
+				if (token2SpanMap.containsKey(tok)) {
+					SAnnotation anno = token2SpanMap.get(tok).getAnnotation(annoQName);
+					if (anno != null) {
+						String value = anno.getValue_STEXT();
+						for (String id : value.split(",")) {
+							id2TokenMap.put(id.trim(), tok);
+						}
+					}
+				}
+			}
+			return id2TokenMap;
+		}
+		
+		private void align(Map<String, SToken> sources, Map<String, SToken> targets) {
+			String labelAnnoQName = getAlignerProperties().getAlignmentLabelAnnoQName();
+			SDocumentGraph graph = getDocument().getDocumentGraph();
+			Set<Pair<String, String>> existingRelations = new HashSet<>();
+			SLayer aLayer = SaltFactory.createSLayer();
+			aLayer.setName("align");
+			aLayer.setGraph(graph);
+			for (Entry<String, SToken> sourceEntry : sources.entrySet()) {
+				SToken sourceToken = sourceEntry.getValue();
+				SToken targetToken = targets.get(sourceEntry.getKey());
+				SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken, SALT_TYPE.SPOINTING_RELATION, null);
+				alignRel.setType(ALIGNMENT_EDGE_TYPE);				
+				existingRelations.add(Pair.of(sourceToken.getId(), targetToken.getId()));
+				aLayer.addRelation(alignRel);
+			}
+			for (Entry<String, SToken> targetEntry : targets.entrySet()) {
+				SToken targetToken = targetEntry.getValue();
+				SToken sourceToken = sources.get(targetEntry.getKey());
+				Pair<String, String> nodePair = Pair.of(sourceToken.getId(), targetToken.getId());
+				if (!existingRelations.contains(nodePair)) {
+					SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken, SALT_TYPE.SPOINTING_RELATION, null);					
+					alignRel.setType(ALIGNMENT_EDGE_TYPE);
+					aLayer.addRelation(alignRel);
+				}
+			}
+			if (labelAnnoQName != null) {  // annotate alignment edges
+				boolean isOnSpan = graph.getSpans().stream().anyMatch((SSpan s) -> s.containsLabel(labelAnnoQName));
+				if (!isOnSpan && graph.getTokens().stream().noneMatch((SToken t) -> t.containsLabel(labelAnnoQName))) {
+					throw new PepperModuleDataException(this, String.format(ERR_MSG_LABEL_ANNO_ERR, labelAnnoQName));
+				}
+				else {
+					for (SRelation rel : aLayer.getRelations()) {
+						SAnnotation edgeLabel = null;
+						if (isOnSpan) {
+							Optional<SRelation> optionalValue = ((SToken) rel.getSource()).getInRelations().stream().filter((SRelation r) -> r instanceof SSpanningRelation && r.getSource().containsLabel(labelAnnoQName)).findFirst();
+							if (!optionalValue.isPresent()) {
+								optionalValue = ((SToken) rel.getTarget()).getInRelations().stream().filter((SRelation r) -> r instanceof SSpanningRelation && r.getSource().containsLabel(labelAnnoQName)).findFirst();
+							}
+							if (optionalValue.isPresent()) {
+								edgeLabel = ((SSpan) optionalValue.get().getSource()).getAnnotation(labelAnnoQName);								
+							}
+						} else {
+							edgeLabel = ((SToken) rel.getSource()).getAnnotation(labelAnnoQName);
+							if (edgeLabel == null) {
+								edgeLabel = ((SToken) rel.getTarget()).getAnnotation(labelAnnoQName);
+							}
+						}
+						if (edgeLabel != null) {
+							rel.createAnnotation(null, edgeLabel.getName(), edgeLabel.getValue());
+						}
+					}						
+				}				
+			}
+			graph.removeNode(graph.getTimeline());
+			graph.getTimelineRelations().stream().forEach(graph::removeRelation);
+		}
+		
+		private void finalize(String dsNameFirst, String dsNameSecond) {	
+			SDocumentGraph graph = getDocument().getDocumentGraph();		
+			STextualDS first = getDSbyName(dsNameFirst);
+			STextualDS second = getDSbyName(dsNameSecond);
+			List<SToken> firstTokens = graph.getSortedTokenByText(getTokensByDS(first));
+			List<SToken> secondTokens = graph.getSortedTokenByText(getTokensByDS(second));
+			STextualDS finalDS = graph.createTextualDS(first.getText() + second.getText());
+			SToken last = null;
+			for (SToken tok : firstTokens) {				
+				tok.getOutRelations().stream().filter((SRelation r) -> r instanceof STextualRelation).findFirst().get().setTarget(finalDS);
+				if (last != null) {
+					graph.createRelation(last, tok, SALT_TYPE.SORDER_RELATION, null).setType("text1");
+				}
+				last = tok;
+			}
+			last = null;
+			for (SToken tok : secondTokens) {
+				STextualRelation tRel = (STextualRelation) tok.getOutRelations().stream().filter((SRelation r) -> r instanceof STextualRelation).findFirst().get();
+				tRel.setTarget(finalDS);
+				tRel.setEnd(tRel.getEnd() + first.getText().length());
+				tRel.setStart(tRel.getStart() + first.getText().length());
+				if (last != null) {
+					graph.createRelation(last, tok, SALT_TYPE.SORDER_RELATION, null).setType("text2");
+				}
+				last = tok;
+			}
+			graph.removeNode(first);
+			graph.removeNode(second);
 		}
 	}
 }
