@@ -16,6 +16,8 @@ public class AlignerProperties extends PepperModuleProperties {
 	public static final String PROP_ANNO_QNAME_ALIGN_LABEL = "label.anno.qname";
 	/** This property sets the type and layer name for the alignment relations. */
 	public static final String PROP_ALIGNMENT_NAME = "relation.name";
+	/**  This property sets the optional time for a tag value which marks segments which are aligned automatically via the timeline */
+	public static final String PROP_AUTOMATIC_TIME_ALIGNMENT = "time-align.value";
 	
 	public AlignerProperties() {
 		addProperty(PepperModuleProperty.create()
@@ -56,6 +58,14 @@ public class AlignerProperties extends PepperModuleProperties {
 				.withDefaultValue("align")
 				.isRequired(false)
 				.build());
+		addProperty(PepperModuleProperty.create()
+				.withName(PROP_AUTOMATIC_TIME_ALIGNMENT)
+				.withType(String.class)
+				.withDescription("This property sets the optional time for a tag value which marks segments which are aligned automatically via the timeline.")
+				.withDefaultValue("")
+				.isRequired(false)
+				.build());
+		
 	}
 	
 	public String getSourceTextName() {
@@ -81,5 +91,9 @@ public class AlignerProperties extends PepperModuleProperties {
 	
 	public String getAlignmentName() {
 		return (String) getProperty(PROP_ALIGNMENT_NAME).getValue();
+	}
+	
+	public String getAutomaticTimeAlignmentValue() {
+		return (String) getProperty(PROP_AUTOMATIC_TIME_ALIGNMENT).getValue();
 	}
 }
