@@ -81,24 +81,29 @@ public class Aligner extends PepperManipulatorImpl {
 		private static final String ERR_MSG_LABEL_ANNO_ERR = "Cannot even partially assign edge labels. No such annotation: {}. Check the provided annotation name or do not set property '"
 				+ AlignerProperties.PROP_ANNO_QNAME_ALIGN_LABEL + "'.";
 
-		/**
-		 * The name used as type for the pointing relations as well as relation layer
-		 * name.
-		 */
-		private String alignmentName = null;
-
+		
 		@Override
 		public DOCUMENT_STATUS mapSDocument() {
 			String sourceTextName = getAlignerProperties().getSourceTextName();
 			String targetTextName = getAlignerProperties().getTargetTextName();
 			String sourceAnnoQName = getAlignerProperties().getSourceAnnoQName();
 			String targetAnnoQName = getAlignerProperties().getTargetAnnoQName();
-			alignmentName = getAlignerProperties().getAlignmentName();
+			String alignmentName = getAlignerProperties().getAlignmentName();
 
 			String automaticTimeAlignValue = getAlignerProperties().getAutomaticTimeAlignmentValue();
-
-			align(getId2TokenMap(sourceTextName, sourceAnnoQName, automaticTimeAlignValue),
-					getId2TokenMap(targetTextName, targetAnnoQName, automaticTimeAlignValue));
+			
+			
+			Map<String, SToken> sources = getId2TokenMap(sourceTextName, sourceAnnoQName, automaticTimeAlignValue);
+			Map<String, SToken> targets = getId2TokenMap(targetTextName, targetAnnoQName, automaticTimeAlignValue);
+			align(sources, targets, alignmentName);
+		
+			if(getAlignerProperties().getRemoveTimeline()) {
+				SDocumentGraph graph = getDocument().getDocumentGraph();
+				
+				graph.removeNode(graph.getTimeline());
+				graph.getTimelineRelations().stream().forEach(graph::removeRelation);
+			}
+			
 			return (DOCUMENT_STATUS.COMPLETED);
 		}
 
@@ -169,12 +174,12 @@ public class Aligner extends PepperManipulatorImpl {
 			return id2TokenMap;
 		}
 
-		private void align(Map<String, SToken> sources, Map<String, SToken> targets) {
+		private void align(Map<String, SToken> sources, Map<String, SToken> targets, String alignmentName) {
 			String labelAnnoQName = getAlignerProperties().getAlignmentLabelAnnoQName();
 			SDocumentGraph graph = getDocument().getDocumentGraph();
 			Set<Pair<String, String>> existingRelations = new HashSet<>();
 			SLayer aLayer = SaltFactory.createSLayer();
-			aLayer.setName(this.alignmentName);
+			aLayer.setName(alignmentName);
 			aLayer.setGraph(graph);
 			for (Entry<String, SToken> sourceEntry : sources.entrySet()) {
 				SToken sourceToken = sourceEntry.getValue();
@@ -182,7 +187,7 @@ public class Aligner extends PepperManipulatorImpl {
 				if(targetToken != null) {
 					SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken,
 							SALT_TYPE.SPOINTING_RELATION, null);
-					alignRel.setType(this.alignmentName);
+					alignRel.setType(alignmentName);
 					existingRelations.add(Pair.of(sourceToken.getId(), targetToken.getId()));
 					aLayer.addRelation(alignRel);
 				}
@@ -194,7 +199,7 @@ public class Aligner extends PepperManipulatorImpl {
 				if (!existingRelations.contains(nodePair)) {
 					SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken,
 							SALT_TYPE.SPOINTING_RELATION, null);
-					alignRel.setType(this.alignmentName);
+					alignRel.setType(alignmentName);
 					aLayer.addRelation(alignRel);
 				}
 			}
@@ -231,8 +236,6 @@ public class Aligner extends PepperManipulatorImpl {
 					}
 				}
 			}
-			graph.removeNode(graph.getTimeline());
-			graph.getTimelineRelations().stream().forEach(graph::removeRelation);
 		}
 	}
 }
