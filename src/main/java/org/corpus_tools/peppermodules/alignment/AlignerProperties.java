@@ -14,6 +14,8 @@ public class AlignerProperties extends PepperModuleProperties {
 	public static final String PROP_ANNO_NAME_TARGET = "target.anno.qname";
 	/** If you want to additionally label the alignment edges, provide a name for the token or span annotation here. The annotation will be searched on both source and target tokens to be more flexible, values need to be identical if you use both. */
 	public static final String PROP_ANNO_QNAME_ALIGN_LABEL = "label.anno.qname";
+	/** This property sets the type and layer name for the alignment relations. */
+	public static final String PROP_ALIGNMENT_NAME = "relation.name";
 	
 	public AlignerProperties() {
 		addProperty(PepperModuleProperty.create()
@@ -47,6 +49,13 @@ public class AlignerProperties extends PepperModuleProperties {
 				.withDefaultValue(null)
 				.isRequired(false)
 				.build());
+		addProperty(PepperModuleProperty.create()
+				.withName(PROP_ALIGNMENT_NAME)
+				.withType(String.class)
+				.withDescription("This property sets the type and layer name for the alignment relations.")
+				.withDefaultValue("align")
+				.isRequired(false)
+				.build());
 	}
 	
 	public String getSourceTextName() {
@@ -68,5 +77,9 @@ public class AlignerProperties extends PepperModuleProperties {
 	public String getAlignmentLabelAnnoQName() {
 		Object value = getProperty(PROP_ANNO_QNAME_ALIGN_LABEL).getValue();
 		return value == null? null : (String) value;
+	}
+	
+	public String getAlignmentName() {
+		return (String) getProperty(PROP_ALIGNMENT_NAME).getValue();
 	}
 }

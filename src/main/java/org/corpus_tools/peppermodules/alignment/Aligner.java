@@ -49,13 +49,7 @@ import org.osgi.service.component.annotations.Component;
  */
 @Component(name = "AlignmentManipulatorComponent", factory = "PepperManipulatorComponentFactory")
 public class Aligner extends PepperManipulatorImpl {
-	public static final String ALIGNMENT_NAME = "align";
-	public static final String ALIGNMENT_FILE_ENDING = "json";
-	private static final String LAYER_NAME_NEW = "NEW";
-	
-	/** maps from document name to alignment array */
-	private Map<String, int[][][]> alignmentMap = null;
-	private Map<Identifier, Identifier> base2donatingDocument;
+
 	// =================================================== mandatory
 	// ===================================================
 	/**
@@ -71,7 +65,7 @@ public class Aligner extends PepperManipulatorImpl {
 		setSupplierContact(URI.createURI(PepperConfiguration.EMAIL));
 		setSupplierHomepage(URI.createURI(PepperConfiguration.HOMEPAGE));
 		// TODO add a description of what your module is supposed to do
-		setDesc("");
+		setDesc("This module aligns tokens with pointing relations that carry the same annotation value for two specified annotation names.");
 		setProperties(new AlignerProperties());
 	}
 	
@@ -82,17 +76,18 @@ public class Aligner extends PepperManipulatorImpl {
 
 	public class AlignmentMapper extends PepperMapperImpl {
 		private static final String ERR_MSG_NO_SUCH_TEXT = "No such text: ";
-		private static final String ERR_MSG_LABEL_ANNO_ERR = "Cannot even partially assign edge labels. No such annotation: {}. Check the provided annotation name or do not set property '" + AlignerProperties.PROP_ANNO_QNAME_ALIGN_LABEL + "'.";
-		private static final String ALIGNMENT_EDGE_TYPE = "align";		
-		/**
-		 * prints out some information about document-structure
-		 */
+		private static final String ERR_MSG_LABEL_ANNO_ERR = "Cannot even partially assign edge labels. No such annotation: {}. Check the provided annotation name or do not set property '" + AlignerProperties.PROP_ANNO_QNAME_ALIGN_LABEL + "'.";				
+		
+		/** The name used as type for the pointing relations as well as relation layer name. */
+		private String alignmentName = null;
+		
 		@Override
 		public DOCUMENT_STATUS mapSDocument() {
 			String sourceTextName = getAlignerProperties().getSourceTextName();
 			String targetTextName = getAlignerProperties().getTargetTextName();
 			String sourceAnnoQName = getAlignerProperties().getSourceAnnoQName();
 			String targetAnnoQName = getAlignerProperties().getTargetAnnoQName();
+			alignmentName = getAlignerProperties().getAlignmentName();
 			align(getId2TokenMap(sourceTextName, sourceAnnoQName), getId2TokenMap(targetTextName, targetAnnoQName));
 			return (DOCUMENT_STATUS.COMPLETED);
 		}
@@ -150,13 +145,13 @@ public class Aligner extends PepperManipulatorImpl {
 			SDocumentGraph graph = getDocument().getDocumentGraph();
 			Set<Pair<String, String>> existingRelations = new HashSet<>();
 			SLayer aLayer = SaltFactory.createSLayer();
-			aLayer.setName("align");
+			aLayer.setName(this.alignmentName);
 			aLayer.setGraph(graph);
 			for (Entry<String, SToken> sourceEntry : sources.entrySet()) {
 				SToken sourceToken = sourceEntry.getValue();
 				SToken targetToken = targets.get(sourceEntry.getKey());
 				SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken, SALT_TYPE.SPOINTING_RELATION, null);
-				alignRel.setType(ALIGNMENT_EDGE_TYPE);				
+				alignRel.setType(this.alignmentName);				
 				existingRelations.add(Pair.of(sourceToken.getId(), targetToken.getId()));
 				aLayer.addRelation(alignRel);
 			}
@@ -166,7 +161,7 @@ public class Aligner extends PepperManipulatorImpl {
 				Pair<String, String> nodePair = Pair.of(sourceToken.getId(), targetToken.getId());
 				if (!existingRelations.contains(nodePair)) {
 					SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken, SALT_TYPE.SPOINTING_RELATION, null);					
-					alignRel.setType(ALIGNMENT_EDGE_TYPE);
+					alignRel.setType(this.alignmentName);
 					aLayer.addRelation(alignRel);
 				}
 			}
