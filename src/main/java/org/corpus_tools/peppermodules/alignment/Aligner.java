@@ -24,7 +24,7 @@ import org.corpus_tools.salt.common.SPointingRelation;
 import org.corpus_tools.salt.common.SSpan;
 import org.corpus_tools.salt.common.SSpanningRelation;
 import org.corpus_tools.salt.common.STextualDS;
-import org.corpus_tools.salt.common.STextualRelation;
+import org.corpus_tools.salt.common.STimelineRelation;
 import org.corpus_tools.salt.common.SToken;
 import org.corpus_tools.salt.core.SAnnotation;
 import org.corpus_tools.salt.core.SLayer;
@@ -33,6 +33,9 @@ import org.corpus_tools.salt.graph.Identifier;
 import org.corpus_tools.salt.util.DataSourceSequence;
 import org.eclipse.emf.common.util.URI;
 import org.osgi.service.component.annotations.Component;
+
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Multimap;
 
 /**
  * This is a dummy implementation to show how a {@link PepperManipulator} works.
@@ -78,20 +81,29 @@ public class Aligner extends PepperManipulatorImpl {
 		private static final String ERR_MSG_LABEL_ANNO_ERR = "Cannot even partially assign edge labels. No such annotation: {}. Check the provided annotation name or do not set property '"
 				+ AlignerProperties.PROP_ANNO_QNAME_ALIGN_LABEL + "'.";
 
-		/**
-		 * The name used as type for the pointing relations as well as relation layer
-		 * name.
-		 */
-		private String alignmentName = null;
-
+		
 		@Override
 		public DOCUMENT_STATUS mapSDocument() {
 			String sourceTextName = getAlignerProperties().getSourceTextName();
 			String targetTextName = getAlignerProperties().getTargetTextName();
 			String sourceAnnoQName = getAlignerProperties().getSourceAnnoQName();
 			String targetAnnoQName = getAlignerProperties().getTargetAnnoQName();
-			alignmentName = getAlignerProperties().getAlignmentName();
-			align(getId2TokenMap(sourceTextName, sourceAnnoQName), getId2TokenMap(targetTextName, targetAnnoQName));
+			String alignmentName = getAlignerProperties().getAlignmentName();
+
+			String automaticTimeAlignValue = getAlignerProperties().getAutomaticTimeAlignmentValue();
+			
+			
+			Map<String, SToken> sources = getId2TokenMap(sourceTextName, sourceAnnoQName, automaticTimeAlignValue);
+			Map<String, SToken> targets = getId2TokenMap(targetTextName, targetAnnoQName, automaticTimeAlignValue);
+			align(sources, targets, alignmentName);
+		
+			if(getAlignerProperties().getRemoveTimeline()) {
+				SDocumentGraph graph = getDocument().getDocumentGraph();
+				
+				graph.removeNode(graph.getTimeline());
+				graph.getTimelineRelations().stream().forEach(graph::removeRelation);
+			}
+			
 			return (DOCUMENT_STATUS.COMPLETED);
 		}
 
@@ -113,17 +125,20 @@ public class Aligner extends PepperManipulatorImpl {
 			}
 		}
 
-		private Map<String, SToken> getId2TokenMap(final String textName, final String annoQName) {
+		private Map<String, SToken> getId2TokenMap(final String textName, final String annoQName,
+				final String automaticTimeAlignValue) {
 			SDocumentGraph graph = getDocument().getDocumentGraph();
 			SLayer tokenLayer = SaltFactory.createSLayer();
 			tokenLayer.setName(textName);
 			tokenLayer.setGraph(graph);
 			STextualDS ds = getDSbyName(textName);
-			Map<SToken, SSpan> token2SpanMap = new HashMap<>();
+			Multimap<SToken, SSpan> token2SpanMap = HashMultimap.create();
 			for (SSpan span : graph.getSpans()) {
 				List<SToken> overlappedTokens = graph.getOverlappedTokens(span);
-				if (overlappedTokens.size() == 1 && span.getAnnotation(annoQName) != null) {
-					token2SpanMap.put(overlappedTokens.get(0), span);
+				if (span.getAnnotation(annoQName) != null) {
+					for(SToken tok : overlappedTokens) {
+						token2SpanMap.put(tok, span);
+					}
 				}
 			}
 			List<SToken> tokens = getTokensByDS(ds);
@@ -131,12 +146,26 @@ public class Aligner extends PepperManipulatorImpl {
 			Map<String, SToken> id2TokenMap = new HashMap<>();
 			for (SToken tok : tokens) {
 				if (token2SpanMap.containsKey(tok)) {
-					SAnnotation anno = token2SpanMap.get(tok).getAnnotation(annoQName);
-					if (anno != null) {
-						String value = anno.getValue_STEXT();
-						if (value != null) {
-							for (String id : value.split(",")) {
-								id2TokenMap.put(id.trim(), tok);
+					for(SSpan span : token2SpanMap.get(tok)) {
+						SAnnotation anno = span.getAnnotation(annoQName);
+						if (anno != null) {
+							String value = anno.getValue_STEXT();
+	
+							if (automaticTimeAlignValue != null && !automaticTimeAlignValue.isEmpty()
+									&& automaticTimeAlignValue.equals(value)) {
+								// find all aligned timeline events and add an ID derived from their index
+								for(SRelation<?,?> rel : tok.getOutRelations()) {
+										if(rel instanceof STimelineRelation) {
+											STimelineRelation timeRel = (STimelineRelation) rel;
+											for(int i=timeRel.getStart(); i < timeRel.getEnd(); i++) {
+												id2TokenMap.put(timeRel.getTarget().getId() + "_" + i , tok);
+											}
+										}
+								}
+							} else {
+								for (String id : value.split(",")) {
+									id2TokenMap.put(id.trim(), tok);
+								}
 							}
 						}
 					}
@@ -145,24 +174,20 @@ public class Aligner extends PepperManipulatorImpl {
 			return id2TokenMap;
 		}
 
-		private void align(Map<String, SToken> sources, Map<String, SToken> targets) {
+		private void align(Map<String, SToken> sources, Map<String, SToken> targets, String alignmentName) {
 			String labelAnnoQName = getAlignerProperties().getAlignmentLabelAnnoQName();
 			SDocumentGraph graph = getDocument().getDocumentGraph();
 			Set<Pair<String, String>> existingRelations = new HashSet<>();
 			SLayer aLayer = SaltFactory.createSLayer();
-			aLayer.setName(this.alignmentName);
+			aLayer.setName(alignmentName);
 			aLayer.setGraph(graph);
 			for (Entry<String, SToken> sourceEntry : sources.entrySet()) {
 				SToken sourceToken = sourceEntry.getValue();
 				SToken targetToken = targets.get(sourceEntry.getKey());
-				if (targetToken == null) {
-					String sourceSpan = graph.getText(sourceToken);
-					logger.error("Alignment target \"" + sourceEntry.getKey() + "\" not found for token \"" + sourceSpan
-							+ "\" (" + sourceToken.getId() + ").");
-				} else {
+				if(targetToken != null) {
 					SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken,
 							SALT_TYPE.SPOINTING_RELATION, null);
-					alignRel.setType(this.alignmentName);
+					alignRel.setType(alignmentName);
 					existingRelations.add(Pair.of(sourceToken.getId(), targetToken.getId()));
 					aLayer.addRelation(alignRel);
 				}
@@ -170,18 +195,12 @@ public class Aligner extends PepperManipulatorImpl {
 			for (Entry<String, SToken> targetEntry : targets.entrySet()) {
 				SToken targetToken = targetEntry.getValue();
 				SToken sourceToken = sources.get(targetEntry.getKey());
-				if (sourceToken == null) {
-					String targetSpan = graph.getText(targetToken);
-					logger.error("Alignment source \"" + targetEntry.getKey() + "\" not found for token \"" + targetSpan
-							+ "\" (" + targetToken.getId() + ").");
-				} else {
-					Pair<String, String> nodePair = Pair.of(sourceToken.getId(), targetToken.getId());
-					if (!existingRelations.contains(nodePair)) {
-						SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken,
-								SALT_TYPE.SPOINTING_RELATION, null);
-						alignRel.setType(this.alignmentName);
-						aLayer.addRelation(alignRel);
-					}
+				Pair<String, String> nodePair = Pair.of(sourceToken.getId(), targetToken.getId());
+				if (!existingRelations.contains(nodePair)) {
+					SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken,
+							SALT_TYPE.SPOINTING_RELATION, null);
+					alignRel.setType(alignmentName);
+					aLayer.addRelation(alignRel);
 				}
 			}
 			if (labelAnnoQName != null) { // annotate alignment edges
@@ -217,8 +236,6 @@ public class Aligner extends PepperManipulatorImpl {
 					}
 				}
 			}
-			graph.removeNode(graph.getTimeline());
-			graph.getTimelineRelations().stream().forEach(graph::removeRelation);
 		}
 	}
 }
