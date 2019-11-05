@@ -1,1 +1,4 @@
 /target/
+/.settings
+/OSGI-INF
+/META-INF/MANIFEST.MF
