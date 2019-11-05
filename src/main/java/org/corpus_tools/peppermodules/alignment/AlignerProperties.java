@@ -14,6 +14,10 @@ public class AlignerProperties extends PepperModuleProperties {
 	public static final String PROP_ANNO_NAME_TARGET = "target.anno.qname";
 	/** If you want to additionally label the alignment edges, provide a name for the token or span annotation here. The annotation will be searched on both source and target tokens to be more flexible, values need to be identical if you use both. */
 	public static final String PROP_ANNO_QNAME_ALIGN_LABEL = "label.anno.qname";
+	
+	/** If an annotation edge label is missing, use this default value */
+	public static final String PROP_ANNO_DEFAULT_VALUE = "label.anno.default-value";
+	
 	/** This property sets the type and layer name for the alignment relations. */
 	public static final String PROP_ALIGNMENT_NAME = "relation.name";
 	/**  This property sets the optional time for a tag value which marks segments which are aligned automatically via the timeline */
@@ -48,6 +52,7 @@ public class AlignerProperties extends PepperModuleProperties {
 				.withDescription("The qualified name of the alignment annotation name on the target.")
 				.isRequired(true)
 				.build());
+
 		addProperty(PepperModuleProperty.create()
 				.withName(PROP_ANNO_QNAME_ALIGN_LABEL)
 				.withType(String.class)
@@ -55,6 +60,15 @@ public class AlignerProperties extends PepperModuleProperties {
 				.withDefaultValue(null)
 				.isRequired(false)
 				.build());
+
+		addProperty(PepperModuleProperty.create()
+				.withName(PROP_ANNO_DEFAULT_VALUE)
+				.withType(String.class)
+				.withDescription("If an annotation edge label is missing, use this default value.")
+				.withDefaultValue("")
+				.isRequired(false)
+				.build());
+
 		addProperty(PepperModuleProperty.create()
 				.withName(PROP_ALIGNMENT_NAME)
 				.withType(String.class)
@@ -98,6 +112,11 @@ public class AlignerProperties extends PepperModuleProperties {
 	
 	public String getAlignmentLabelAnnoQName() {
 		Object value = getProperty(PROP_ANNO_QNAME_ALIGN_LABEL).getValue();
+		return value == null? null : (String) value;
+	}
+
+	public String getAlignmentLabelDefaultValue() {
+		Object value = getProperty(PROP_ANNO_DEFAULT_VALUE).getValue();
 		return value == null? null : (String) value;
 	}
 	

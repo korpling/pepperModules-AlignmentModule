@@ -31,6 +31,7 @@ import org.corpus_tools.salt.core.SLayer;
 import org.corpus_tools.salt.core.SRelation;
 import org.corpus_tools.salt.graph.Identifier;
 import org.corpus_tools.salt.util.DataSourceSequence;
+import org.corpus_tools.salt.util.SaltUtil;
 import org.eclipse.emf.common.util.URI;
 import org.osgi.service.component.annotations.Component;
 
@@ -162,7 +163,7 @@ public class Aligner extends PepperManipulatorImpl {
 											}
 										}
 								}
-							} else {
+							} else if (value != null) {
 								for (String id : value.split(",")) {
 									id2TokenMap.put(id.trim(), tok);
 								}
@@ -184,7 +185,11 @@ public class Aligner extends PepperManipulatorImpl {
 			for (Entry<String, SToken> sourceEntry : sources.entrySet()) {
 				SToken sourceToken = sourceEntry.getValue();
 				SToken targetToken = targets.get(sourceEntry.getKey());
-				if(targetToken != null) {
+				if (targetToken == null) {
+					String sourceSpan = graph.getText(sourceToken);
+					logger.error("Alignment target \"" + sourceEntry.getKey() + "\" not found for token \"" + sourceSpan
+							+ "\" (" + sourceToken.getId() + ").");
+				} else  {
 					SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken,
 							SALT_TYPE.SPOINTING_RELATION, null);
 					alignRel.setType(alignmentName);
@@ -195,17 +200,24 @@ public class Aligner extends PepperManipulatorImpl {
 			for (Entry<String, SToken> targetEntry : targets.entrySet()) {
 				SToken targetToken = targetEntry.getValue();
 				SToken sourceToken = sources.get(targetEntry.getKey());
-				Pair<String, String> nodePair = Pair.of(sourceToken.getId(), targetToken.getId());
-				if (!existingRelations.contains(nodePair)) {
-					SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken,
-							SALT_TYPE.SPOINTING_RELATION, null);
-					alignRel.setType(alignmentName);
-					aLayer.addRelation(alignRel);
+				if (sourceToken == null) {
+					String targetSpan = graph.getText(targetToken);
+					logger.error("Alignment source \"" + targetEntry.getKey() + "\" not found for token \"" + targetSpan
+							+ "\" (" + targetToken.getId() + ").");
+				} else {
+					Pair<String, String> nodePair = Pair.of(sourceToken.getId(), targetToken.getId());
+					if (!existingRelations.contains(nodePair)) {
+						SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken,
+								SALT_TYPE.SPOINTING_RELATION, null);
+						alignRel.setType(alignmentName);
+						aLayer.addRelation(alignRel);
+					}
 				}
 			}
 			if (labelAnnoQName != null) { // annotate alignment edges
 				boolean isOnSpan = graph.getSpans().stream().anyMatch((SSpan s) -> s.containsLabel(labelAnnoQName));
-				if (!isOnSpan && graph.getTokens().stream().noneMatch((SToken t) -> t.containsLabel(labelAnnoQName))) {
+				String defaultValue = getAlignerProperties().getAlignmentLabelDefaultValue();
+				if (!isOnSpan && defaultValue == null && graph.getTokens().stream().noneMatch((SToken t) -> t.containsLabel(labelAnnoQName))) {
 					throw new PepperModuleDataException(this, String.format(ERR_MSG_LABEL_ANNO_ERR, labelAnnoQName));
 				} else {
 					for (SRelation rel : aLayer.getRelations()) {
@@ -230,7 +242,11 @@ public class Aligner extends PepperManipulatorImpl {
 								edgeLabel = ((SToken) rel.getTarget()).getAnnotation(labelAnnoQName);
 							}
 						}
-						if (edgeLabel != null) {
+
+						if (edgeLabel == null && defaultValue != null) {
+							Pair<String, String> qname = SaltUtil.splitQName(labelAnnoQName);
+							rel.createAnnotation(qname.getKey(), qname.getValue(), defaultValue);
+						} else if (edgeLabel != null) {
 							rel.createAnnotation(null, edgeLabel.getName(), edgeLabel.getValue());
 						}
 					}
