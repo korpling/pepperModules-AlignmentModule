@@ -1,9 +1,8 @@
 package org.corpus_tools.peppermodules.alignment;
 
-import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -94,8 +93,8 @@ public class Aligner extends PepperManipulatorImpl {
 			String automaticTimeAlignValue = getAlignerProperties().getAutomaticTimeAlignmentValue();
 			
 			
-			Map<String, SToken> sources = getId2TokenMap(sourceTextName, sourceAnnoQName, automaticTimeAlignValue);
-			Map<String, SToken> targets = getId2TokenMap(targetTextName, targetAnnoQName, automaticTimeAlignValue);
+			Multimap<String, SToken> sources = getId2TokenMap(sourceTextName, sourceAnnoQName, automaticTimeAlignValue);
+			Multimap<String, SToken> targets = getId2TokenMap(targetTextName, targetAnnoQName, automaticTimeAlignValue);
 			align(sources, targets, alignmentName);
 		
 			if(getAlignerProperties().getRemoveTimeline()) {
@@ -126,7 +125,7 @@ public class Aligner extends PepperManipulatorImpl {
 			}
 		}
 
-		private Map<String, SToken> getId2TokenMap(final String textName, final String annoQName,
+		private Multimap<String, SToken> getId2TokenMap(final String textName, final String annoQName,
 				final String automaticTimeAlignValue) {
 			SDocumentGraph graph = getDocument().getDocumentGraph();
 			SLayer tokenLayer = SaltFactory.createSLayer();
@@ -144,7 +143,7 @@ public class Aligner extends PepperManipulatorImpl {
 			}
 			List<SToken> tokens = getTokensByDS(ds);
 			tokens.stream().forEach(tokenLayer::addNode);
-			Map<String, SToken> id2TokenMap = new HashMap<>();
+			Multimap<String, SToken> id2TokenMap = HashMultimap.create();
 			for (SToken tok : tokens) {
 				if (token2SpanMap.containsKey(tok)) {
 					for(SSpan span : token2SpanMap.get(tok)) {
@@ -175,44 +174,50 @@ public class Aligner extends PepperManipulatorImpl {
 			return id2TokenMap;
 		}
 
-		private void align(Map<String, SToken> sources, Map<String, SToken> targets, String alignmentName) {
+		private void align(Multimap<String, SToken> sources, Multimap<String, SToken> targets, String alignmentName) {
 			String labelAnnoQName = getAlignerProperties().getAlignmentLabelAnnoQName();
 			SDocumentGraph graph = getDocument().getDocumentGraph();
 			Set<Pair<String, String>> existingRelations = new HashSet<>();
 			SLayer aLayer = SaltFactory.createSLayer();
 			aLayer.setName(alignmentName);
 			aLayer.setGraph(graph);
-			for (Entry<String, SToken> sourceEntry : sources.entrySet()) {
+			for (Entry<String, SToken> sourceEntry : sources.entries()) {
 				SToken sourceToken = sourceEntry.getValue();
-				SToken targetToken = targets.get(sourceEntry.getKey());
-				if (targetToken == null) {
-					String sourceSpan = graph.getText(sourceToken);
-					logger.error("Alignment target \"" + sourceEntry.getKey() + "\" not found for token \"" + sourceSpan
-							+ "\" (" + sourceToken.getId() + ").");
-				} else  {
-					SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken,
-							SALT_TYPE.SPOINTING_RELATION, null);
-					alignRel.setType(alignmentName);
-					existingRelations.add(Pair.of(sourceToken.getId(), targetToken.getId()));
-					aLayer.addRelation(alignRel);
-				}
-			}
-			for (Entry<String, SToken> targetEntry : targets.entrySet()) {
-				SToken targetToken = targetEntry.getValue();
-				SToken sourceToken = sources.get(targetEntry.getKey());
-				if (sourceToken == null) {
-					String targetSpan = graph.getText(targetToken);
-					logger.error("Alignment source \"" + targetEntry.getKey() + "\" not found for token \"" + targetSpan
-							+ "\" (" + targetToken.getId() + ").");
-				} else {
-					Pair<String, String> nodePair = Pair.of(sourceToken.getId(), targetToken.getId());
-					if (!existingRelations.contains(nodePair)) {
+				Iterator<SToken> targetIter = targets.get(sourceEntry.getKey()).iterator();
+				while (targetIter.hasNext()) {
+					SToken targetToken = targetIter.next();
+					if (targetToken == null) {
+						String sourceSpan = graph.getText(sourceToken);
+						logger.error("Alignment target \"" + sourceEntry.getKey() + "\" not found for token \"" + sourceSpan
+								+ "\" (" + sourceToken.getId() + ").");
+					} else  {
 						SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken,
 								SALT_TYPE.SPOINTING_RELATION, null);
 						alignRel.setType(alignmentName);
+						existingRelations.add(Pair.of(sourceToken.getId(), targetToken.getId()));
 						aLayer.addRelation(alignRel);
 					}
 				}
+			}
+			for (Entry<String, SToken> targetEntry : targets.entries()) {
+				SToken targetToken = targetEntry.getValue();
+				Iterator<SToken> sourceIter = sources.get(targetEntry.getKey()).iterator();
+				while (sourceIter.hasNext()) {
+					SToken sourceToken = sourceIter.next();
+					if (sourceToken == null) {
+						String targetSpan = graph.getText(targetToken);
+						logger.error("Alignment source \"" + targetEntry.getKey() + "\" not found for token \"" + targetSpan
+								+ "\" (" + targetToken.getId() + ").");
+					} else {
+						Pair<String, String> nodePair = Pair.of(sourceToken.getId(), targetToken.getId());
+						if (!existingRelations.contains(nodePair)) {
+							SPointingRelation alignRel = (SPointingRelation) graph.createRelation(sourceToken, targetToken,
+									SALT_TYPE.SPOINTING_RELATION, null);
+							alignRel.setType(alignmentName);
+							aLayer.addRelation(alignRel);
+						}
+					}	
+				}				
 			}
 			if (labelAnnoQName != null) { // annotate alignment edges
 				boolean isOnSpan = graph.getSpans().stream().anyMatch((SSpan s) -> s.containsLabel(labelAnnoQName));
